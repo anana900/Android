@@ -2,49 +2,63 @@ package com.example.graph;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.content.Context;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 
 import com.github.mikephil.charting.charts.BarChart;
-import com.github.mikephil.charting.components.AxisBase;
 import com.github.mikephil.charting.components.Description;
-import com.github.mikephil.charting.components.XAxis;
-import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.BarData;
 import com.github.mikephil.charting.data.BarDataSet;
 import com.github.mikephil.charting.data.BarEntry;
-import com.github.mikephil.charting.data.CandleEntry;
-import com.github.mikephil.charting.formatter.IAxisValueFormatter;
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
-import com.github.mikephil.charting.formatter.ValueFormatter;
-import com.github.mikephil.charting.interfaces.datasets.IBarDataSet;
-import com.github.mikephil.charting.utils.ColorTemplate;
-import com.github.mikephil.charting.utils.Utils;
 
 import java.util.ArrayList;
 import java.util.Random;
-import java.util.logging.Logger;
+
+/*
+                              EtykietaX<String>
+                                    |
+Entry           DataSet             |               ViewGroup
+  BarEntry ------> BarDataSet ------+--> BarData ------> BarChart
+
+Surowe dane, ktore chcemy wyswietlic na danym wykresie musza byc reprezentowane przez obiekty klasy
+Entry. Dla wykresu typu BarChart będą to odpowiednio BarEntry (podklasa Entry zapewne).
+
+Tworzac liste BarEntry musimy stworzyć dla niej liste etykiet opisujących dane na osi X.
+Do tego celu możemy stworzyć np liste o typie String z daną ilością etykiet. * w zależności od
+tego jak rozwiążemy temat tworzenia tej listy osiągniemy różne rezultaty - np statyczna lista przy
+dynamicznym wykresie bedzie zawsze wyswietlac etykiety w kolejnosci od 0 do N dla kolejnych danych.
+Z kolei jesli taka lista etykiet bedzie tworzona dynamicznie wraz ze zmieniajaca sie
+liczba elementow Entry wowczas bedziemy mieli mozliwosc wyswietlania danych odpowiednio
+skorelowanych z Entry. Przyklad poniżej zawiera rozwiazanie statyczne.
+Zeby bylo dynamiczne nalezy linie:
+for (int i = 0 ; i < SENSORS ; i++) sensorListLabel.add("Czujnik "+(i+1));
+przeniesc do petli w funkcji updateBarChartData (odpowiednio przerabiajac liczniki).
+
+Dane w listy w postaci BarEntry wykożystujemy do stworzenia serii danych BarDAtaSet.
+
+Z kolei BarDataSet jest używana do tworzenia danych wykresu BarData.
+
+Te z kolei są bezpośrednio wykożystywane przez instancje wykresy BarChart.
+*/
+
 
 public class BarChartActivity extends AppCompatActivity {
 
     final static int SENSORS = 4;
     Button reget;
-    BarChart chart;
-    BarDataSet barSet;
-    BarData data;
+    BarChart wykresbc;
+    BarDataSet slupkiDanychJednaSeria;
+    BarData slupkiDanych;
     Random losowanie = new Random();
-    ArrayList<IBarDataSet> dataSets = null;
-    Description dd = new Description();
+    Description opisWykresu = new Description();
 
-    ArrayList<BarEntry> slupki = new ArrayList<BarEntry>();
-    ArrayList<String> sensorListLabel = new ArrayList<String>();
-    ArrayList<Integer> sensorListColor = new ArrayList<Integer>();
+    ArrayList<BarEntry> listaSurowychDanych = new ArrayList<BarEntry>();
+    ArrayList<String> opisLabelkiOsiX = new ArrayList<String>();
+    ArrayList<Integer> kolorDanychBarData = new ArrayList<Integer>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,7 +66,7 @@ public class BarChartActivity extends AppCompatActivity {
         setContentView(R.layout.activity_bar_chart);
 
         reget = (Button) findViewById(R.id.nowe);
-        chart = (BarChart) findViewById(R.id.barchart);
+        wykresbc = (BarChart) findViewById(R.id.barchart);
 
         iniBarChart();
 
@@ -61,60 +75,57 @@ public class BarChartActivity extends AppCompatActivity {
             public void onClick(View v) {
                 Log.println(Log.INFO,"AGRORUN","Updating bar chart data");
                 updateBarChartData();
-                barSet.notifyDataSetChanged();
-                data.notifyDataChanged();
-                chart.notifyDataSetChanged();
-                chart.invalidate();
+                slupkiDanychJednaSeria.notifyDataSetChanged();
+                slupkiDanych.notifyDataChanged();
+                wykresbc.notifyDataSetChanged();
+                wykresbc.invalidate();
             }
         });
     }
 
     private void iniBarChart() {
-        for (int i = 0 ; i < SENSORS ; i++) sensorListLabel.add("Czujnik "+(i+1));
+        for (int i = 0 ; i < SENSORS ; i++) opisLabelkiOsiX.add("Czujnik "+(i+1));
 
         // ustawienie osi X - labelek
-        chart.getXAxis().setGranularity(1);
-        chart.getXAxis().setGranularityEnabled(true);
-        chart.getXAxis().setValueFormatter(new IndexAxisValueFormatter(sensorListLabel));
-        chart.getXAxis().setTextSize(14);
-        chart.setExtraOffsets(10, 10, 10, 10);
+        wykresbc.getXAxis().setGranularity(1);
+        wykresbc.getXAxis().setGranularityEnabled(true);
+        wykresbc.getXAxis().setValueFormatter(new IndexAxisValueFormatter(opisLabelkiOsiX));
+        wykresbc.getXAxis().setTextSize(14);
+        wykresbc.setExtraOffsets(10, 10, 10, 10);
 
         // Konfiguracja osi Y
-        chart.getAxisLeft().setAxisMinimum(0);
-        chart.getAxisLeft().setAxisMaximum(100);
-        chart.getAxisRight().setAxisMinimum(0);
-        chart.getAxisRight().setAxisMaximum(1200);
-        chart.getAxisRight().setDrawGridLines(false);
-        chart.getAxisRight().setLabelCount(12);
-        chart.getAxisLeft().setLabelCount(10);
-        chart.getAxisLeft().setTextSize(18);
-        chart.getAxisRight().setTextSize(18);
-        chart.setDrawValueAboveBar(false);
-        chart.setTouchEnabled(false);
+        wykresbc.getAxisLeft().setAxisMinimum(0);
+        wykresbc.getAxisLeft().setAxisMaximum((int)100);
+        wykresbc.getAxisRight().setAxisMinimum(0);
+        wykresbc.getAxisRight().setAxisMaximum(1200);
+        wykresbc.getAxisRight().setDrawGridLines(false);
+        wykresbc.getAxisRight().setLabelCount(6);
+        wykresbc.getAxisLeft().setLabelCount(5);
+        wykresbc.getAxisLeft().setTextSize(18);
+        wykresbc.getAxisRight().setTextSize(18);
+        wykresbc.setDrawValueAboveBar(false);
+        wykresbc.setTouchEnabled(false);
 
         updateBarChartData();
 
         // ustawienie osi Y - danych wykresu
-        barSet = new BarDataSet(slupki, "Lista podłączonych czujników");
-        barSet.setColors(sensorListColor);
-
-        dataSets = new ArrayList<IBarDataSet>();
-        dataSets.add(barSet);
+        slupkiDanychJednaSeria = new BarDataSet(listaSurowychDanych, "Lista podłączonych czujników");
+        slupkiDanychJednaSeria.setColors(kolorDanychBarData);
 
         // wyswietlenie danyxh
-        data = new BarData(dataSets);
-        data.setValueTextSize(25f);
-        data.setHighlightEnabled(false);
-        data.setBarWidth(0.9f);
-        data.setDrawValues(true);
+        slupkiDanych = new BarData(slupkiDanychJednaSeria);
+        slupkiDanych.setValueTextSize(25f);
+        slupkiDanych.setHighlightEnabled(false);
+        slupkiDanych.setBarWidth(0.9f);
+        slupkiDanych.setDrawValues(true);
 
-        chart.setData(data);
+        wykresbc.setData(slupkiDanych);
     }
 
     private void updateBarChartData(){
   //      sensorListLabel.clear();
-        sensorListColor.clear();
-        slupki.clear();
+        kolorDanychBarData.clear();
+        listaSurowychDanych.clear();
         int val = 0;
         int connectedSensor = 0;
         for (int i = 0 ; i < SENSORS ; i++) {
@@ -122,17 +133,17 @@ public class BarChartActivity extends AppCompatActivity {
             val = generujemy();
             // this check is to detect sensor presence only
             if (val > 5) {
-                slupki.add(new BarEntry(connectedSensor, val));
-                sensorListColor.add(calculateColor(val));
+                listaSurowychDanych.add(new BarEntry(connectedSensor, val));
+                kolorDanychBarData.add(calculateColor(val));
                 connectedSensor++;
             }
 
-            dd.setText("Brak podłączonych czujników");
-            chart.getDescription().setTextSize(18);
-            chart.getDescription().setTextColor(Color.RED);
-            chart.setDescription(dd);
-            chart.getDescription().setEnabled(slupki.isEmpty());
-            chart.getXAxis().setDrawLabels(!slupki.isEmpty());
+            opisWykresu.setText("Brak podłączonych czujników");
+            wykresbc.getDescription().setTextSize(18);
+            wykresbc.getDescription().setTextColor(Color.RED);
+            wykresbc.setDescription(opisWykresu);
+            wykresbc.getDescription().setEnabled(listaSurowychDanych.isEmpty());
+            wykresbc.getXAxis().setDrawLabels(!listaSurowychDanych.isEmpty());
         }
     }
 
